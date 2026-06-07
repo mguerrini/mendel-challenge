@@ -6,7 +6,11 @@
       "Bash(java -version)",
       "Bash(docker info *)",
       "Bash(docker compose *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/transactions/types/test)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/transactions/types/test)",
+      "Bash(./mvnw test *)",
+      "Bash(mvn test *)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//usr/local/bin/**)"
     ]
   }
 }

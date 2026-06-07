@@ -20,6 +20,9 @@
 
     <properties>
         <java.version>17</java.version>
+        <!-- ByteBuddy más nuevo, compatible con JVMs recientes (JDK 25);
+             evita los warnings de sun.misc.Unsafe del 1.14.13 que trae el parent. -->
+        <byte-buddy.version>1.17.6</byte-buddy.version>
     </properties>
 
     <dependencies>
@@ -53,5 +56,35 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- El proyecto apunta a Java 17. Si se compila/testea sobre un JDK más
+             nuevo (ej. 25), Mockito necesita el modo experimental de ByteBuddy y
+             la JVM emite warnings de carga dinámica de agentes, CDS y sun.misc.Unsafe.
+             Este profile se activa solo en JDK >= 21 y silencia ese ruido; en
+             Java 17 el build queda sin flags extra. -->
+        <profile>
+            <id>jdk-moderno</id>
+            <activation>
+                <jdk>[21,)</jdk>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <argLine>
+                                -Dnet.bytebuddy.experimental=true
+                                -XX:+EnableDynamicAgentLoading
+                                -Xshare:off
+                                --sun-misc-unsafe-memory-access=allow
+                            </argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
