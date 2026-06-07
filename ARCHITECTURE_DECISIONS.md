@@ -13,8 +13,9 @@
 5. [Consistencia y atomicidad](#5-consistencia-y-atomicidad)
 6. [Concurrencia](#6-concurrencia)
 7. [Idempotencia](#7-idempotencia)
-8. [Diseño del esquema DynamoDB](#8-diseño-del-esquema-dynamodb)
-9. [API Contract](#9-api-contract)
+8. [Implementación en memoria](#8-implementación-en-memoria)
+9. [Diseño del esquema DynamoDB](#9-diseño-del-esquema-dynamodb)
+10. [API Contract](#10-api-contract)
 
 ---
 
@@ -172,7 +173,71 @@ Si la condición falla → `propagated` ya era `true` → la propagación fue co
 
 ---
 
-## 8. Diseño del esquema DynamoDB
+## 8. Implementación en memoria
+
+La implementación en memoria (`InMemoryTransactionRepository`) simula el comportamiento de DynamoDB usando las primitivas de concurrencia de Java. Cada comportamiento de AWS tiene su equivalente directo.
+
+### Creación atómica — `save`
+
+| DynamoDB | En memoria |
+|---|---|
+| `PutItem` con `ConditionExpression: attribute_not_exists(transactionId)` | `ConcurrentHashMap.putIfAbsent(id, transaction)` |
+
+`putIfAbsent` es atómica en `ConcurrentHashMap`: si el id ya existe retorna el valor existente (non-null), y el repositorio lanza `TransactionAlreadyExistsException`. No hay ventana de race condition entre el check y la escritura.
+
+### Lectura de ancestros — `findAncestors`
+
+| DynamoDB | En memoria |
+|---|---|
+| `BatchGetItem` con lista de `transactionId` extraídos del path | Parseo del path + lectura directa del `ConcurrentHashMap` por cada id |
+
+Se parsean todos los segmentos del path excepto el último (que es la propia transacción), y se retornan los objetos `Transaction` con su estado actual — incluyendo `version` y `accumulatedSum` — que serán usados por el `TransactionPropagatorService` para calcular los nuevos valores.
+
+### Propagación atómica — `applyPropagation`
+
+| DynamoDB | En memoria |
+|---|---|
+| `TransactWrite` — operación todo-o-nada con `ConditionExpression` por ítem | `ReentrantLock` que cubre validación + actualización de todos los ancestros + marcado de `propagated` |
+
+La operación bajo lock hace tres cosas en secuencia, sin posibilidad de interleaving:
+
+1. **Guard de idempotencia**: verifica `transaction.isPropagated() == false`. Si ya es `true`, lanza `AlreadyPropagatedException` — equivale al `ConditionExpression: propagated = false` de DynamoDB.
+
+2. **Validación de versiones**: recorre todos los `AncestorUpdate` y verifica que `current.version == update.expectedVersion()`. Si alguna no coincide, lanza `VersionConflictException` — equivale al `ConditionExpression: version = :expected` de DynamoDB. Toda la operación falla si cualquier versión es incorrecta (todo-o-nada).
+
+3. **Aplicación**: actualiza `accumulatedSum` en cada ancestro e incrementa su `version`. Marca `transaction.propagated = true`.
+
+El cálculo del nuevo `accumulatedSum` (`ancestor.accumulatedSum + amount`) es responsabilidad del `TransactionPropagatorService` antes de llamar al repositorio. El repositorio solo recibe el valor final a través del record `AncestorUpdate(transactionId, newAccumulatedSum, expectedVersion)`.
+
+### Manejo de conflictos y reintentos
+
+`TransactionPropagatorService` implementa el loop de reintentos ante `VersionConflictException`:
+
+```
+para cada intento (máx. MAX_RETRIES):
+    findAncestors(path)          ← re-lee versiones frescas
+    buildUpdates(ancestors)      ← recalcula nuevos valores
+    applyPropagation(tx, updates) ← intenta la escritura atómica
+    si VersionConflictException → reintentar
+    si AlreadyPropagatedException → descartar (ya propagado por otro proceso)
+```
+
+Cada reintento parte de un `findAncestors` fresco, garantizando que las versiones usadas en la validación son las actuales al momento del intento. Esto replica el comportamiento de la Lambda productiva que relee con `BatchGetItem` antes de cada `TransactWrite`.
+
+### Resumen de equivalencias
+
+| Mecanismo AWS | Equivalente en memoria |
+|---|---|
+| `PutItem` + `attribute_not_exists` | `ConcurrentHashMap.putIfAbsent` |
+| `BatchGetItem` | Lectura directa del mapa por lista de ids |
+| `TransactWrite` todo-o-nada | `ReentrantLock` cubriendo validación + escritura |
+| `ConditionExpression: version = :expected` | Comparación de `version` bajo lock |
+| `ConditionExpression: propagated = false` | Check de `isPropagated()` bajo lock |
+| Reintento de Lambda ante fallo de `TransactWrite` | Loop de reintentos en `TransactionPropagatorService` |
+
+---
+
+## 9. Diseño del esquema DynamoDB
 
 ### TransactionTable
 
@@ -213,7 +278,7 @@ El límite de 25 ítems por `TransactWrite` implica un máximo de 24 niveles de 
 
 ---
 
-## 9. API Contract
+## 10. API Contract
 
 ### Endpoints
 
