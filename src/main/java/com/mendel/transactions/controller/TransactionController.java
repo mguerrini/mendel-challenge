@@ -3,6 +3,7 @@ package com.mendel.transactions.controller;
 import com.mendel.transactions.dto.StatusResponse;
 import com.mendel.transactions.dto.SumResponse;
 import com.mendel.transactions.dto.TransactionRequest;
+import com.mendel.transactions.dto.TypesResponse;
 import com.mendel.transactions.service.TransactionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,8 +13,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/transactions")
@@ -30,21 +29,16 @@ public class TransactionController {
     public StatusResponse createTransaction(
             @PathVariable long transactionId,
             @RequestBody TransactionRequest request) {
-        transactionService.createTransaction(
-                transactionId,
-                request.getAmount(),
-                request.getType(),
-                request.getParentId());
-        return StatusResponse.ok();
+        return transactionService.createTransaction(transactionId, request);
     }
 
     @GetMapping("/types/{type}")
-    public List<Long> getTransactionsByType(@PathVariable String type) {
+    public TypesResponse getTransactionsByType(@PathVariable String type) {
         return transactionService.getTransactionIdsByType(type);
     }
 
     @GetMapping("/sum/{transactionId}")
     public SumResponse getAccumulatedSum(@PathVariable long transactionId) {
-        return new SumResponse(transactionService.getAccumulatedSum(transactionId));
+        return transactionService.getAccumulatedSum(transactionId);
     }
 }

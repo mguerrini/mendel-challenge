@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/mxg/.m2/**)",
+      "Bash(brew list *)",
+      "Bash(java -version)"
+    ]
+  }
+}
