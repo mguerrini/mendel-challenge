@@ -7,11 +7,20 @@ import java.util.Optional;
 
 public interface TransactionRepository {
 
+    void save(Transaction transaction);
+
     Optional<Transaction> findById(long id);
 
     List<Long> findIdsByType(String type);
 
-    boolean existsById(long id);
+    List<Transaction> findAncestors(String path);
 
-    void saveWithPropagation(Transaction transaction, List<Long> ancestorIds, double amount);
+    // Atomic equivalent of DynamoDB TransactWrite:
+    // - guards on propagated == false (idempotence)
+    // - validates version on each ancestor
+    // - updates accumulatedSum on all ancestors
+    // - marks transaction as propagated
+    // Throws VersionConflictException if any ancestor version has changed.
+    // Throws AlreadyPropagatedException if transaction was already propagated.
+    void applyPropagation(Transaction transaction, List<AncestorUpdate> updates);
 }

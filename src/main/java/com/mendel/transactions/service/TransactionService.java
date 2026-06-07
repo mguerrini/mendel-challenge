@@ -1,15 +1,14 @@
 package com.mendel.transactions.service;
 
-import com.mendel.transactions.dto.StatusResponse;
-import com.mendel.transactions.dto.SumResponse;
 import com.mendel.transactions.dto.TransactionRequest;
-import com.mendel.transactions.dto.TypesResponse;
+
+import java.util.List;
 
 public interface TransactionService {
 
-    StatusResponse createTransaction(long transactionId, TransactionRequest request);
+    void createTransaction(TransactionRequest request);
 
-    TypesResponse getTransactionIdsByType(String type);
+    List<Long> getTransactionIdsByType(String type);
 
-    SumResponse getAccumulatedSum(long transactionId);
+    double getAccumulatedSum(long transactionId);
 }

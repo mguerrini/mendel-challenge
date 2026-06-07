@@ -68,8 +68,8 @@ public class Transaction {
 
     // --- Mutators (solo los campos que cambian post-creación) ---
 
-    public void addToAccumulatedSum(double amount) {
-        this.accumulatedSum += amount;
+    public void updateAccumulatedSum(double newValue) {
+        this.accumulatedSum = newValue;
         this.version++;
     }
 

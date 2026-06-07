@@ -1,81 +1,71 @@
 package com.mendel.transactions.service;
 
-import com.mendel.transactions.dto.StatusResponse;
-import com.mendel.transactions.dto.SumResponse;
 import com.mendel.transactions.dto.TransactionRequest;
-import com.mendel.transactions.dto.TypesResponse;
 import com.mendel.transactions.exception.InvalidTransactionException;
 import com.mendel.transactions.exception.ParentNotFoundException;
-import com.mendel.transactions.exception.TransactionAlreadyExistsException;
 import com.mendel.transactions.exception.TransactionNotFoundException;
 import com.mendel.transactions.model.Transaction;
+
 import com.mendel.transactions.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class TransactionServiceImpl implements TransactionService {
 
     private final TransactionRepository repository;
+    private final TransactionPropagatorService propagatorService;
 
-    public TransactionServiceImpl(TransactionRepository repository) {
+    public TransactionServiceImpl(TransactionRepository repository, TransactionPropagatorService propagatorService) {
         this.repository = repository;
+        this.propagatorService = propagatorService;
     }
 
     @Override
-    public StatusResponse createTransaction(long transactionId, TransactionRequest request) {
-        this.validate(transactionId, request.getType());
+    public void createTransaction(TransactionRequest request) {
+        long transactionId = request.getTransactionId();
+        validate(transactionId, request.getType());
 
-        if (repository.existsById(transactionId)) {
-            throw new TransactionAlreadyExistsException(transactionId);
-        }
-
-        Long parentId = request.getParentId();
-        double amount = request.getAmount();
-
-        String path;
-        List<Long> ancestorIds;
-
-        if (parentId != null) {
-            Transaction parent = repository.findById(parentId)
-                    .orElseThrow(() -> new ParentNotFoundException(parentId));
-            path        = parent.getPath() + "/" + transactionId;
-            ancestorIds = parsePath(parent.getPath());
-        } else {
-            path        = String.valueOf(transactionId);
-            ancestorIds = Collections.emptyList();
-        }
+        boolean hasParent = request.getParentId() != null;
+        String path = buildPath(transactionId, request.getParentId());
 
         Transaction transaction = Transaction.builder()
                 .id(transactionId)
-                .amount(amount)
+                .amount(request.getAmount())
                 .type(request.getType())
-                .parentId(parentId)
+                .parentId(request.getParentId())
                 .path(path)
-                .accumulatedSum(amount)
-                .propagated(ancestorIds.isEmpty())
+                .accumulatedSum(request.getAmount())
+                .propagated(!hasParent)
                 .build();
 
-        repository.saveWithPropagation(transaction, ancestorIds, amount);
+        repository.save(transaction);
 
-        return StatusResponse.ok();
+        if (hasParent) {
+            propagatorService.propagate(transaction);
+        }
     }
 
     @Override
-    public TypesResponse getTransactionIdsByType(String type) {
-        return new TypesResponse(repository.findIdsByType(type));
+    public List<Long> getTransactionIdsByType(String type) {
+        return repository.findIdsByType(type);
     }
 
     @Override
-    public SumResponse getAccumulatedSum(long transactionId) {
-        double sum = repository.findById(transactionId)
+    public double getAccumulatedSum(long transactionId) {
+        return repository.findById(transactionId)
                 .orElseThrow(() -> new TransactionNotFoundException(transactionId))
                 .getAccumulatedSum();
-        return new SumResponse(sum);
+    }
+
+    private String buildPath(long transactionId, Long parentId) {
+        if (parentId == null) {
+            return String.valueOf(transactionId);
+        }
+        Transaction parent = repository.findById(parentId)
+                .orElseThrow(() -> new ParentNotFoundException(parentId));
+        return parent.getPath() + "/" + transactionId;
     }
 
     private void validate(long transactionId, String type) {
@@ -85,11 +75,5 @@ public class TransactionServiceImpl implements TransactionService {
         if (type == null || type.isBlank()) {
             throw new InvalidTransactionException("Type must not be empty");
         }
-    }
-
-    private List<Long> parsePath(String path) {
-        return Arrays.stream(path.split("/"))
-                .map(Long::parseLong)
-                .collect(Collectors.toList());
     }
 }

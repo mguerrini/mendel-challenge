@@ -29,16 +29,17 @@ public class TransactionController {
     public StatusResponse createTransaction(
             @PathVariable long transactionId,
             @RequestBody TransactionRequest request) {
-        return transactionService.createTransaction(transactionId, request);
+        transactionService.createTransaction(request.withTransactionId(transactionId));
+        return StatusResponse.ok();
     }
 
     @GetMapping("/types/{type}")
     public TypesResponse getTransactionsByType(@PathVariable String type) {
-        return transactionService.getTransactionIdsByType(type);
+        return new TypesResponse(transactionService.getTransactionIdsByType(type));
     }
 
     @GetMapping("/sum/{transactionId}")
     public SumResponse getAccumulatedSum(@PathVariable long transactionId) {
-        return transactionService.getAccumulatedSum(transactionId);
+        return new SumResponse(transactionService.getAccumulatedSum(transactionId));
     }
 }

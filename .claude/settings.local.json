@@ -3,7 +3,8 @@
     "allow": [
       "Read(//Users/mxg/.m2/**)",
       "Bash(brew list *)",
-      "Bash(java -version)"
+      "Bash(java -version)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
