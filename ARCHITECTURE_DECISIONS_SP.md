@@ -263,15 +263,6 @@ Cada reintento parte de un `findAncestors` fresco, garantizando que las versione
 
 `ALL` porque el `GET /types/{type}` devuelve la lista de ids sin necesidad de un `GetItem` adicional por cada resultado.
 
-### Access patterns
-
-| # | Operación | Mecanismo | Complejidad |
-|---|---|---|---|
-| AP1 | Obtener tx por id | `GetItem(transactionId)` | O(1) |
-| AP2 | Obtener ids por type | `Query GSI TypeIndex` | O(1) |
-| AP3 | Leer ancestros | `BatchGetItem(ancestorIds)` | O(1) roundtrips |
-| AP4 | Escritura atómica | `TransactWrite (max 25 ítems)` | O(profundidad) |
-
 ### Restricción conocida
 
 El límite de 25 ítems por `TransactWrite` implica un máximo de 24 niveles de profundidad por operación. Para árboles más profundos se requeriría una estrategia de propagación particionada — documentada como mejora futura.
